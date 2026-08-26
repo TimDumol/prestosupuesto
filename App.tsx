@@ -135,6 +135,7 @@ function TypeTabs({ value, onChange }: { value: TransactionKind; onChange: (kind
             onPress={() => onChange(item)}
             style={({ pressed }) => [styles.typeTab, active && styles.typeTabActive, pressed && styles.pressed]}
           >
+            {/* eslint-disable-next-line security/detect-object-injection */}
             <Text style={[styles.typeTabText, active && styles.typeTabTextActive]}>{kindLabels[item]}</Text>
           </Pressable>
         );
@@ -300,6 +301,7 @@ export default function App() {
 
   function changeKind(next: TransactionKind) {
     setKind(next);
+    // eslint-disable-next-line security/detect-object-injection
     setDescription(typeDefaults[next]);
     setError('');
     setShowMore(false);
@@ -452,6 +454,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
+      {/* eslint-disable-next-line security/detect-object-injection */}
       <Header title={pageTitle[screen]} />
       <View style={styles.flex}>{screen === 'add' ? renderAddScreen() : null}{screen === 'recent' ? renderRecentScreen() : null}{screen === 'budget' ? renderBudgetScreen() : null}{screen === 'setup' ? renderSetupScreen() : null}</View>
       {toast ? <View style={styles.toast} accessibilityLiveRegion="polite"><Text style={styles.toastIcon}>✓</Text><Text style={styles.toastText}>{toast}</Text></View> : null}
