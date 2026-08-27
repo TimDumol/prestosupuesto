@@ -41,12 +41,15 @@ const kindLabels: Record<TransactionKind, string> = {
   reallocate: 'Reallocate',
 };
 
-const typeDefaults: Record<TransactionKind, string> = {
-  expense: 'Weekly groceries',
-  income: 'Monthly salary',
-  transfer: 'Move to savings',
-  reallocate: 'Top up home repairs',
-};
+function getDefaultDescription(kind: TransactionKind): string {
+  switch (kind) {
+    case 'expense': return 'Weekly groceries';
+    case 'income': return 'Monthly salary';
+    case 'transfer': return 'Move to savings';
+    case 'reallocate': return 'Top up home repairs';
+    default: return '';
+  }
+}
 
 function Header({ title }: { title: string }) {
   return (
@@ -125,7 +128,7 @@ function FlowRow({ label, flow }: { label: string; flow: string }) {
 function TypeTabs({ value, onChange }: { value: TransactionKind; onChange: (kind: TransactionKind) => void }) {
   return (
     <View style={styles.typeTabs} accessibilityRole="tablist">
-      {(Object.keys(kindLabels) as TransactionKind[]).map((item) => {
+      {(Object.entries(kindLabels) as [TransactionKind, string][]).map(([item, label]) => {
         const active = item === value;
         return (
           <Pressable
@@ -135,7 +138,7 @@ function TypeTabs({ value, onChange }: { value: TransactionKind; onChange: (kind
             onPress={() => onChange(item)}
             style={({ pressed }) => [styles.typeTab, active && styles.typeTabActive, pressed && styles.pressed]}
           >
-            <Text style={[styles.typeTabText, active && styles.typeTabTextActive]}>{kindLabels[item]}</Text>
+            <Text style={[styles.typeTabText, active && styles.typeTabTextActive]}>{label}</Text>
           </Pressable>
         );
       })}
@@ -277,7 +280,7 @@ export default function App() {
   const [kind, setKind] = useState<TransactionKind>('expense');
   const [amount, setAmount] = useState('42.80');
   const [currency, setCurrency] = useState<Currency>('EUR');
-  const [description, setDescription] = useState(typeDefaults.expense);
+  const [description, setDescription] = useState(getDefaultDescription('expense'));
   const [categoryFrom, setCategoryFrom] = useState('food');
   const [categoryTo, setCategoryTo] = useState('home');
   const [accountFrom, setAccountFrom] = useState('visa');
@@ -296,11 +299,20 @@ export default function App() {
   const selectedToCategory = categories.find((item) => item.id === categoryTo) ?? categories[0];
   const selectedFromAccount = accounts.find((item) => item.id === accountFrom) ?? accounts[0];
   const selectedToAccount = accounts.find((item) => item.id === accountTo) ?? accounts[0];
-  const pageTitle: Record<Screen, string> = { recent: 'Recent transactions', add: 'New transaction', budget: 'Budget availability', setup: 'Sheet setup' };
+
+  function getPageTitle(s: Screen): string {
+    switch (s) {
+      case 'recent': return 'Recent transactions';
+      case 'add': return 'New transaction';
+      case 'budget': return 'Budget availability';
+      case 'setup': return 'Sheet setup';
+      default: return '';
+    }
+  }
 
   function changeKind(next: TransactionKind) {
     setKind(next);
-    setDescription(typeDefaults[next]);
+    setDescription(getDefaultDescription(next));
     setError('');
     setShowMore(false);
     if (next === 'expense') { setCategoryFrom('food'); setAccountFrom('visa'); }
@@ -452,7 +464,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-      <Header title={pageTitle[screen]} />
+      <Header title={getPageTitle(screen)} />
       <View style={styles.flex}>{screen === 'add' ? renderAddScreen() : null}{screen === 'recent' ? renderRecentScreen() : null}{screen === 'budget' ? renderBudgetScreen() : null}{screen === 'setup' ? renderSetupScreen() : null}</View>
       {toast ? <View style={styles.toast} accessibilityLiveRegion="polite"><Text style={styles.toastIcon}>✓</Text><Text style={styles.toastText}>{toast}</Text></View> : null}
       <BottomNav value={screen} onChange={setScreen} />
