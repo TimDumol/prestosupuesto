@@ -59,7 +59,8 @@ async function runGateway<T>(functionName: string, parameter?: object): Promise<
   const deploymentId = process.env.EXPO_PUBLIC_APPS_SCRIPT_DEPLOYMENT_ID;
   if (!deploymentId) throw new Error('Missing EXPO_PUBLIC_APPS_SCRIPT_DEPLOYMENT_ID.');
   async function request(token: string) {
-    return fetch(`https://script.googleapis.com/v1/scripts/${deploymentId}:run`, {
+    // The host is fixed to Google's API; only the deployment ID is build-time configuration.
+    return fetch(`https://script.googleapis.com/v1/scripts/${deploymentId}:run`, { // foxguard: ignore[js/no-ssrf]
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({

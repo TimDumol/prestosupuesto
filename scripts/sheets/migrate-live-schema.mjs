@@ -102,4 +102,4 @@ finish(async () => {
     throw new Error('Live metadata migration verification failed.');
   }
   console.log('Live schema migration committed and verified. Transactions R:T are hidden metadata columns.');
-});
+});

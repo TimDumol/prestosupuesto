@@ -35,4 +35,4 @@ finish(async () => {
     throw new Error('Live gateway verification failed.');
   }
   console.log(`Gateway promoted and verified for live workbook; timezone ${health.timezone}.`);
-});
+});

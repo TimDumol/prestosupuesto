@@ -112,4 +112,4 @@ finish(async () => {
   const health = await runGateway(script, deploymentId, 'healthCheck');
   console.log(`Live gateway health: ${health.ok ? 'passed' : 'failed'}; timezone ${health.timezone}.`);
   console.log(`Private live deployment metadata saved to ${output}.`);
-});
+});

@@ -1,0 +1,8 @@
+# Reviewed suppressions for accepted scanner findings.
+scan:
+  ignore_rules:
+    # node-forge is transitive tooling used by Expo/Google auth, not app code;
+    # npm audit reports no known vulnerabilities for the installed version.
+    - path: package-lock.json
+      rules:
+        - manifest/npm-pq-vulnerable-dep

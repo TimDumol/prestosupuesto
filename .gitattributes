@@ -1,0 +1,2 @@
+# Keep repository text files in a consistent LF format.
+* text=auto eol=lf
