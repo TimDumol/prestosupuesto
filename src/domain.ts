@@ -1,3 +1,5 @@
+import { formatTransactionDate, relativeDateIso } from './date';
+
 export type TransactionKind = 'expense' | 'income' | 'transfer' | 'reallocate';
 
 export type Category = {
@@ -15,9 +17,11 @@ export type Account = {
   name: string;
   currency: Currency;
   kind: 'bank' | 'card' | 'cash' | 'savings';
+  balanceNative?: number | null;
+  reconciliationNative?: number | null;
 };
 
-export type Currency = 'EUR' | 'USD' | 'GBP';
+export type Currency = 'EUR' | 'PHP' | 'USD';
 
 export type Transaction = {
   id: string;
@@ -25,11 +29,16 @@ export type Transaction = {
   description: string;
   amount: number;
   currency: Currency;
+  date: string;
   dateLabel: string;
+  toAmount?: number;
+  sourceRow?: number;
+  revision?: string;
   categoryFrom?: string;
   categoryTo?: string;
   accountFrom?: string;
   accountTo?: string;
+  syncStatus?: 'pending' | 'failed';
 };
 
 export const SYSTEM_INCOME = 'income';
@@ -60,7 +69,8 @@ export const initialTransactions: Transaction[] = [
     description: 'Corner café',
     amount: 2.2,
     currency: 'EUR',
-    dateLabel: 'Today · 08:14',
+    date: relativeDateIso(0),
+    dateLabel: formatTransactionDate(relativeDateIso(0)),
     categoryFrom: 'eating-out',
     categoryTo: SYSTEM_EXPENSE,
     accountFrom: 'cash',
@@ -71,7 +81,8 @@ export const initialTransactions: Transaction[] = [
     description: 'Metro pass',
     amount: 1.5,
     currency: 'EUR',
-    dateLabel: 'Today · 07:45',
+    date: relativeDateIso(0),
+    dateLabel: formatTransactionDate(relativeDateIso(0)),
     categoryFrom: 'transport',
     categoryTo: SYSTEM_EXPENSE,
     accountFrom: 'visa',
@@ -82,7 +93,8 @@ export const initialTransactions: Transaction[] = [
     description: 'August salary',
     amount: 3250,
     currency: 'EUR',
-    dateLabel: 'Yesterday',
+    date: relativeDateIso(1),
+    dateLabel: formatTransactionDate(relativeDateIso(1)),
     categoryFrom: SYSTEM_INCOME,
     categoryTo: 'buffer',
     accountTo: 'checking',
@@ -93,7 +105,8 @@ export const initialTransactions: Transaction[] = [
     description: 'Savings transfer',
     amount: 500,
     currency: 'EUR',
-    dateLabel: 'Yesterday',
+    date: relativeDateIso(1),
+    dateLabel: formatTransactionDate(relativeDateIso(1)),
     accountFrom: 'checking',
     accountTo: 'savings',
   },
@@ -103,7 +116,8 @@ export const initialTransactions: Transaction[] = [
     description: 'Top up home repairs',
     amount: 100,
     currency: 'EUR',
-    dateLabel: 'Yesterday',
+    date: relativeDateIso(1),
+    dateLabel: formatTransactionDate(relativeDateIso(1)),
     categoryFrom: 'travel',
     categoryTo: 'home',
   },
@@ -121,7 +135,7 @@ export function available(category: Category) {
 }
 
 export function money(value: number, currency: Currency = 'EUR') {
-  const symbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : '£';
+  const symbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : '₱';
   return `${symbol}${Math.abs(value).toLocaleString('en-US', {
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
     maximumFractionDigits: 2,
@@ -132,6 +146,6 @@ export function categoryName(categories: Category[], id?: string) {
   return categories.find((item) => item.id === id)?.name ?? '—';
 }
 
-export function accountName(id?: string) {
-  return accounts.find((item) => item.id === id)?.name ?? '—';
+export function accountName(accountList: Account[], id?: string) {
+  return accountList.find((item) => item.id === id)?.name ?? '—';
 }

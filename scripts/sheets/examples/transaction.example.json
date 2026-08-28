@@ -1,0 +1,12 @@
+{
+  "Date": "2026-08-23",
+  "Description": "Google Sheets API test",
+  "From Category": "Food & groceries",
+  "To Category": "Expense",
+  "From Account": "Visa",
+  "To Account": "",
+  "From Amount": 12.34,
+  "From Currency": "EUR",
+  "To Amount": 12.34,
+  "To Currency": "EUR"
+}

@@ -45,3 +45,6 @@ yarn-error.*
 /.android-user
 /.gradle-home
 /*.apk
+
+# Local Google OAuth/service-account credentials and refresh tokens
+/.google/
