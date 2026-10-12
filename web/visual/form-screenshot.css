@@ -1,0 +1,2 @@
+/* Keep sticky navigation from covering offscreen portions of tall form captures. */
+.sidebar { visibility: hidden !important; }

@@ -1,0 +1,8 @@
+[Unit]
+Description=Reclaim expired Presto backup storage
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/presto-backup prune
+TimeoutStartSec=4h
+UMask=0077

@@ -1,0 +1,94 @@
+{
+  "amounts": [
+    {
+      "input": "1.234,56",
+      "amount": "1234.56",
+      "money": "1234.56"
+    },
+    {
+      "input": "1,234.56",
+      "amount": "1234.56",
+      "money": "1234.56"
+    },
+    {
+      "input": "1 234,56",
+      "amount": "1234.56",
+      "money": "1234.56"
+    },
+    {
+      "input": "1,23,4",
+      "amount": null,
+      "money": null
+    },
+    {
+      "input": "1,2.34",
+      "amount": null,
+      "money": null
+    },
+    {
+      "input": "1.234",
+      "amount": "1.234",
+      "money": null
+    },
+    {
+      "input": "\u20ac12.50",
+      "amount": "12.5",
+      "money": "12.50"
+    },
+    {
+      "input": "1.234.567",
+      "amount": "1234567",
+      "money": "1234567.00"
+    },
+    {
+      "input": "=2*(3+4)-1",
+      "amount": "13",
+      "money": "13.00"
+    },
+    {
+      "input": "=0.1+0.2",
+      "amount": "0.30000000000000004",
+      "money": "0.30"
+    },
+    {
+      "input": "=12\u00f74",
+      "amount": "3",
+      "money": "3.00"
+    },
+    {
+      "input": "=1/0",
+      "amount": null,
+      "money": null
+    },
+    {
+      "input": "=1/3",
+      "amount": "0.3333333333333333",
+      "money": null
+    },
+    {
+      "input": "=1/3*3",
+      "amount": "1",
+      "money": "1.00"
+    },
+    {
+      "input": "=1/7*7",
+      "amount": "1",
+      "money": "1.00"
+    },
+    {
+      "input": "=1+",
+      "amount": null,
+      "money": null
+    },
+    {
+      "input": "=foo",
+      "amount": null,
+      "money": null
+    },
+    {
+      "input": "NaN",
+      "amount": null,
+      "money": null
+    }
+  ]
+}

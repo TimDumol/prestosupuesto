@@ -1,0 +1,38 @@
+services:
+  finance:
+    image: "{{ presto_image }}"
+    pull_policy: never
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BIND_ADDR: 0.0.0.0:3000
+      DATABASE_PATH: /app/data/presto.sqlite
+      STATIC_DIR: /app/web/dist
+      COOKIE_SECURE: "true"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - {{ presto_deploy_dir }}/data:/app/data
+{% if presto_fcm_service_account_file is defined %}
+      - {{ presto_deploy_dir }}/secrets/fcm.json:/app/secrets/fcm.json:ro
+{% endif %}
+    expose:
+      - "3000"
+    mem_limit: 384m
+    pids_limit: 128
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      default: {}
+      caddy-edge:
+        aliases:
+          - presto-finance
+
+networks:
+  default: {}
+  caddy-edge:
+    external: true
+    name: caddy-edge

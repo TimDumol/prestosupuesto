@@ -1,0 +1,41 @@
+{
+  "name": "presto-finance-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "npm run test:accessibility",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --test-isolation=none --experimental-strip-types *.test.ts lib/*.test.ts scripts/*.test.mjs",
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots",
+    "lint:typography": "node scripts/lint-typography.mjs",
+    "test:accessibility": "npm run lint:typography && playwright test readability.spec.ts"
+  },
+  "dependencies": {
+    "@visx/axis": "^4.0.0",
+    "@visx/curve": "^4.0.0",
+    "@visx/event": "^4.0.0",
+    "@visx/grid": "^4.0.0",
+    "@visx/responsive": "^4.0.0",
+    "@visx/scale": "^4.0.0",
+    "@visx/shape": "^4.0.0",
+    "@visx/tooltip": "^4.0.0",
+    "antd": "^6.6.5",
+    "react": "19.2.3",
+    "react-datepicker": "^9.1.0",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
+    "@types/react": "~19.2.2",
+    "@types/react-dom": "~19.2.2",
+    "@vitejs/plugin-react": "^5.0.0",
+    "esbuild": "0.28.2",
+    "typescript": "~6.0.3",
+    "vite": "^7.1.0",
+    "postcss": "^8.5.28"
+  }
+}

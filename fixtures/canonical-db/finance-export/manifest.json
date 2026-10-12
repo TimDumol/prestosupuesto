@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "sourceSpreadsheetId": "SANITIZED-PHASE-B-FIXTURE",
+  "exportFile": "finance-export.json",
+  "exportSha256": "3d7e58ba0ed9c800c0066d85344a29a80de955e4cbe448cf3298bb2a1b7f773e",
+  "exportedAt": "2026-09-28T00:00:00.000Z",
+  "canonicalTimeZone": "Europe/Madrid",
+  "currentCanonicalMonth": "2026-09",
+  "workbook": {
+    "locale": "en_US",
+    "timeZone": "Asia/Manila"
+  },
+  "sheets": {
+    "transactions": {
+      "title": "Transactions",
+      "sheetId": 1,
+      "range": "'Transactions'!A1:T8",
+      "rowCount": 8,
+      "columnCount": 20
+    },
+    "accounts": {
+      "title": "Accounts",
+      "sheetId": 2,
+      "range": "'Accounts'!A1:R7",
+      "rowCount": 7,
+      "columnCount": 18
+    },
+    "accountCheckpoints": {
+      "title": "Accounts",
+      "sheetId": 2,
+      "range": "'Accounts'!W1:BE7",
+      "rowCount": 3,
+      "columnCount": 35
+    },
+    "budgets": {
+      "title": "Expenses v3",
+      "sheetId": 3,
+      "range": "'Expenses v3'!A1:H9",
+      "rowCount": 9,
+      "columnCount": 8
+    },
+    "exchangeRates": {
+      "title": "Exchange Rates",
+      "sheetId": 4,
+      "range": "'Exchange Rates'!A1:F4",
+      "rowCount": 4,
+      "columnCount": 6
+    }
+  },
+  "transactionValuationCellStates": {
+    "summary": {
+      "formula": 54,
+      "literal": 0,
+      "blank": 1,
+      "error": 1
+    },
+    "errors": []
+  },
+  "accountCheckpointCellStates": {
+    "summary": {
+      "formula": 1,
+      "literal": 2,
+      "blank": 206,
+      "error": 1
+    },
+    "errors": []
+  },
+  "testWorkbook": true,
+  "sanitizedFixture": true
+}

@@ -1,0 +1,8 @@
+[Unit]
+Description=Read and verify every encrypted Presto backup pack
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/presto-backup check
+TimeoutStartSec=4h
+UMask=0077

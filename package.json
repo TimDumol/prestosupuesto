@@ -1,0 +1,52 @@
+{
+  "name": "prestosupuesto",
+  "version": "2.0.0",
+  "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
+    "googleapis": "^176.0.0"
+  },
+  "scripts": {
+    "lint": "npm --prefix web run test:accessibility",
+    "web": "npm run web:server",
+    "web:build": "npm --prefix web run build",
+    "web:server": "cargo run --manifest-path server/Cargo.toml",
+    "web:typecheck": "npm --prefix web run typecheck",
+    "typecheck": "npm run web:typecheck",
+    "android:apk": "bash scripts/build-and-install-native-android.sh",
+    "test:sheets": "node --test scripts/sheets/lib.test.mjs scripts/sheets/finance-schema.test.mjs",
+    "sheets:auth": "node --env-file-if-exists=.sheets.env.local scripts/sheets/auth.mjs",
+    "sheets:inspect": "node --env-file-if-exists=.sheets.env.local scripts/sheets/inspect.mjs",
+    "sheets:structure": "node --env-file-if-exists=.sheets.env.local scripts/sheets/structure.mjs",
+    "sheets:probe-ledger": "node --env-file-if-exists=.sheets.env.local scripts/sheets/probe-ledger.mjs",
+    "sheets:test-transaction": "node --env-file-if-exists=.sheets.env.local scripts/sheets/test-transaction.mjs",
+    "sheets:migrate-test-schema": "node --env-file-if-exists=.sheets.env.local scripts/sheets/migrate-test-schema.mjs",
+    "gateway:deploy-test": "node --env-file-if-exists=.sheets.env.local scripts/gateway/deploy-test.mjs",
+    "gateway:enable-api": "node --env-file-if-exists=.sheets.env.local scripts/gateway/enable-api.mjs",
+    "gateway:call": "node --env-file-if-exists=.sheets.env.local scripts/gateway/call.mjs",
+    "sheets:finance-snapshot": "node --env-file-if-exists=.sheets.env.local scripts/sheets/finance-snapshot.mjs",
+    "sheets:export-finance": "node --env-file-if-exists=.sheets.env.local scripts/sheets/export-finance.mjs",
+    "db:finance-import": "cargo run --manifest-path server/Cargo.toml --bin presto-admin -- finance import",
+    "db:finance-verify": "cargo run --manifest-path server/Cargo.toml --bin presto-admin -- finance verify",
+    "db:finance-export": "cargo run --manifest-path server/Cargo.toml --bin presto-admin -- finance export-sqlite",
+    "db:finance-restore": "cargo run --manifest-path server/Cargo.toml --bin presto-admin -- finance restore-sqlite",
+    "db:finance-fixture": "node scripts/sheets/create-sanitized-finance-fixture.mjs",
+    "sheets:read": "node --env-file-if-exists=.sheets.env.local scripts/sheets/read.mjs",
+    "sheets:snapshot": "node --env-file-if-exists=.sheets.env.local scripts/sheets/snapshot.mjs",
+    "sheets:append": "node --env-file-if-exists=.sheets.env.local scripts/sheets/append-record.mjs",
+    "sheets:patch": "node --env-file-if-exists=.sheets.env.local scripts/sheets/patch-record.mjs",
+    "sheets:migrate-live-schema": "node --env-file-if-exists=.sheets.env.local scripts/sheets/migrate-live-schema.mjs",
+    "gateway:deploy-live": "node --env-file-if-exists=.sheets.env.local scripts/gateway/deploy-live.mjs",
+    "gateway:promote-live": "node --env-file-if-exists=.sheets.env.local scripts/gateway/promote-live.mjs",
+    "test:visual": "npm --prefix web run test:visual --",
+    "test:visual:update": "npm --prefix web run test:visual:update --",
+    "native:android": "bash scripts/build-and-install-native-android.sh",
+    "native:test": "bash scripts/test-native-android.sh",
+    "test:web": "npm --prefix web test"
+  },
+  "private": true,
+  "overrides": {
+    "gaxios@6": {
+      "uuid": "^11.1.1"
+    }
+  }
+}

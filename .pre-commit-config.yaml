@@ -1,0 +1,5 @@
+repos:
+  - repo: https://github.com/0sec-labs/foxguard
+    rev: cd819b44973983b075fa23999b97a1fd03fe7b6c # v0.12.0
+    hooks:
+      - id: foxguard

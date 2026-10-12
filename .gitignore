@@ -1,0 +1,91 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env
+.env.*
+!.env*.example
+*.env
+!*.env.example
+/.aws/
+/.agents/
+/.codex/
+.env*.local
+.sheets.env.local
+
+# typescript
+*.tsbuildinfo
+
+# Local Android build toolchain and caches
+/.android-sdk
+/.android-user
+/.androidrc
+/.gradle-home
+/*.apk
+
+# Local Google OAuth/service-account credentials and refresh tokens
+/.google/
+/.google/migration/
+/.pocket-id-api-key
+/.pocket-id-client-configured.json
+/.pocket-id-auth-tested.json
+
+# Hosted finance web service
+/data/
+/server/target/
+/web/node_modules/
+
+# Private finance database backups
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Browser test output (visual baselines are committed)
+/test-results/
+/playwright-report/
+/web/test-results/
+/web/playwright-report/
+/web/playwright/.auth/
+
+# Private offsite backup tools, credentials and repositories
+/.backup/
+
+# Firebase server credentials (Android google-services.json is public client config)
+**/*service-account*.json
+**/td-personal-finance-*.json
+
+# Private deployment overrides and finance exports
+/deploy/ansible/inventory/*.local.yml
+*.sqlite.backup
+*.sqlite.bak
+
+# Private operational records and production client configuration
+/.claude/
+/HANDOVER.md
+/docs/*handoff*.md
+/docs/public-repository-review.md
+/deploy/ansible/inventory/hosts.yml
+/native-android/app/google-services.json

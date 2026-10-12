@@ -1,0 +1,241 @@
+---
+- name: Deploy Presto finance workspace to Athena
+  hosts: presto
+  become: true
+  vars:
+    presto_database: "{{ presto_deploy_dir }}/data/presto.sqlite"
+  tasks:
+    - name: Verify a preloaded application image was supplied
+      ansible.builtin.assert:
+        that:
+          - presto_image is string
+          - presto_image | length > 0
+          - presto_env_file is string
+          - presto_env_file | length > 0
+        fail_msg: Supply the locally built image and production environment file through scripts/deploy.sh.
+
+    - name: Check for an existing Docker Engine and Compose plugin
+      ansible.builtin.command:
+        argv: [docker, compose, version]
+      register: presto_existing_compose
+      changed_when: false
+      failed_when: false
+      tags:
+        - bootstrap
+
+    - name: Install Docker Engine and Compose plugin prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - python3
+        state: present
+        update_cache: true
+      tags:
+        - bootstrap
+
+    - name: Install Docker Engine and Compose plugin when absent
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+      when: presto_existing_compose.rc != 0
+      tags:
+        - bootstrap
+
+    - name: Enable Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+      tags:
+        - bootstrap
+
+    - name: Verify the application image is loaded
+      ansible.builtin.command:
+        argv:
+          - docker
+          - image
+          - inspect
+          - "{{ presto_image }}"
+      changed_when: false
+
+    - name: Verify the shared Caddy container exists
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - "{{ presto_caddy_container }}"
+      changed_when: false
+
+    - name: Inspect the shared Caddy edge network
+      ansible.builtin.command:
+        argv:
+          - docker
+          - network
+          - inspect
+          - --format
+          - "{{ '{{' }}.Driver{{ '}}' }}"
+          - caddy-edge
+      check_mode: false
+      changed_when: false
+      failed_when: false
+      register: caddy_edge_inspect
+
+    - name: Reject a non-bridge shared Caddy edge network
+      ansible.builtin.assert:
+        that:
+          - caddy_edge_inspect.rc != 0 or caddy_edge_inspect.stdout | trim == 'bridge'
+        fail_msg: caddy-edge exists but is not a Docker bridge network.
+
+    - name: Create the shared Caddy edge network when absent
+      ansible.builtin.command:
+        argv:
+          - docker
+          - network
+          - create
+          - --driver
+          - bridge
+          - caddy-edge
+      when:
+        - caddy_edge_inspect.rc != 0
+        - not ansible_check_mode
+      check_mode: false
+      changed_when: true
+
+    - name: Create deployment and persistent data directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ presto_deploy_dir }}", mode: '0750' }
+        - { path: "{{ presto_deploy_dir }}/app", mode: '0750' }
+        - { path: "{{ presto_deploy_dir }}/data", owner: '10001', group: '10001', mode: '0700' }
+        - { path: "{{ presto_caddy_sites_dir }}", mode: '0755' }
+
+    - name: Inspect the existing SQLite database
+      ansible.builtin.stat:
+        path: "{{ presto_database }}"
+      register: presto_db_stat
+
+    - name: Back up the live SQLite database before replacing the service
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "import sqlite3,sys; src=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True); dst=sqlite3.connect(sys.argv[2]); src.backup(dst); dst.close(); src.close()"
+          - "{{ presto_database }}"
+          - "{{ presto_deploy_dir }}/data/presto-{{ ansible_date_time.iso8601_basic_short }}.sqlite"
+      when: presto_db_stat.stat.exists
+      changed_when: true
+
+    - name: Protect the SQLite backup
+      ansible.builtin.file:
+        path: "{{ presto_deploy_dir }}/data/presto-{{ ansible_date_time.iso8601_basic_short }}.sqlite"
+        owner: '10001'
+        group: '10001'
+        mode: '0600'
+      when: presto_db_stat.stat.exists
+
+    - name: Install the production environment file
+      ansible.builtin.copy:
+        src: "{{ presto_env_file }}"
+        dest: "{{ presto_deploy_dir }}/app/.env"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+
+    - name: Create the FCM secrets directory
+      ansible.builtin.file:
+        path: "{{ presto_deploy_dir }}/secrets"
+        state: directory
+        owner: root
+        group: '10001'
+        mode: '0750'
+      when: presto_fcm_service_account_file is defined
+
+    - name: Install the FCM service-account secret
+      ansible.builtin.copy:
+        src: "{{ presto_fcm_service_account_file }}"
+        dest: "{{ presto_deploy_dir }}/secrets/fcm.json"
+        owner: root
+        group: '10001'
+        mode: '0440'
+      when: presto_fcm_service_account_file is defined
+      no_log: true
+
+    - name: Install the Docker Compose configuration
+      ansible.builtin.template:
+        src: templates/compose.production.yaml.j2
+        dest: "{{ presto_deploy_dir }}/app/compose.production.yaml"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Start the finance service
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - presto-finance
+          - -f
+          - compose.production.yaml
+          - up
+          - --detach
+          - --force-recreate
+      args:
+        chdir: "{{ presto_deploy_dir }}/app"
+      changed_when: true
+
+    - name: Install the Athena Caddy site
+      ansible.builtin.template:
+        src: templates/athena.caddy.j2
+        dest: "{{ presto_caddy_sites_dir }}/athena.caddy"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Validate the shared Caddy configuration
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ presto_caddy_container }}"
+          - caddy
+          - validate
+          - --config
+          - /etc/caddy/Caddyfile
+          - --adapter
+          - caddyfile
+      changed_when: false
+
+    - name: Reload the shared Caddy configuration
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ presto_caddy_container }}"
+          - caddy
+          - reload
+          - --config
+          - /etc/caddy/Caddyfile
+          - --adapter
+          - caddyfile
+      changed_when: true
+
+    - name: Verify the hosted finance health endpoint
+      ansible.builtin.uri:
+        url: "https://{{ presto_domain }}/healthz"
+        return_content: true
+        status_code: 200
+        validate_certs: true
+      register: presto_health
+      retries: 20
+      delay: 5
+      until: presto_health.status == 200

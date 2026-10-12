@@ -1,0 +1,9 @@
+[Unit]
+Description=Consistent encrypted Presto backup
+After=docker.service network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/presto-backup
+TimeoutStartSec=2h
+UMask=0077

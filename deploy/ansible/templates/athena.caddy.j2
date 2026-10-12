@@ -1,0 +1,13 @@
+{{ presto_domain }} {
+    encode zstd gzip
+    log {
+        output stdout
+        format json
+    }
+    header {
+        -Server
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+    }
+    reverse_proxy presto-finance:3000
+}

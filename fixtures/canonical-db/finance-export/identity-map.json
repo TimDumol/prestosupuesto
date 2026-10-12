@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "3d7e58ba0ed9c800c0066d85344a29a80de955e4cbe448cf3298bb2a1b7f773e",
+  "importRunId": "01a0f36d-fe19-7352-b728-fd236f9aff4f",
+  "transactionIds": {
+    "3": "01a0f36d-fe19-7352-b728-fd31c67077b7",
+    "4": "01a0f36d-fe19-7352-b728-fd32fab54b12",
+    "5": "01a0f36d-fe19-7352-b728-fd338fc1a255",
+    "6": "01a0f36d-fe19-7352-b728-fd34c4859e8f",
+    "7": "01a0f36d-fe19-7352-b728-fd35870ed2b7",
+    "8": "01a0f36d-fe19-7352-b728-fd3617975050"
+  },
+  "accountIds": {
+    "Expense": "01a0f36d-fe19-7352-b728-fd26f0bb9ccb",
+    "Fixture EUR account": "01a0f36d-fe19-7352-b728-fd24607c9b20",
+    "Fixture USD account": "01a0f36d-fe19-7352-b728-fd25098bb754",
+    "Income": "01a0f36d-fe19-7352-b728-fd27122c558f",
+    "Reallocation": "01a0f36d-fe19-7352-b728-fd28361e06f8",
+    "Reconciliation": "01a0f36d-fe19-7352-b728-fd293deb9229"
+  },
+  "categoryIds": {
+    "Expense": "01a0f36d-fe19-7352-b728-fd2cea910f03",
+    "Fixture Groceries": "01a0f36d-fe19-7352-b728-fd2a0f136df1",
+    "Fixture Savings": "01a0f36d-fe19-7352-b728-fd2b70743a17",
+    "Fixture Transfers": "01a0f36d-fe19-7352-b728-fd30dc44f003",
+    "Income": "01a0f36d-fe19-7352-b728-fd2d64dbafe1",
+    "Reallocation": "01a0f36d-fe19-7352-b728-fd2e4ee33a38",
+    "Reconciliation": "01a0f36d-fe19-7352-b728-fd2f9a3e77ca"
+  }
+}

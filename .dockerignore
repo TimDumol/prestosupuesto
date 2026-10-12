@@ -1,0 +1,27 @@
+.git
+.google
+node_modules
+web/node_modules
+web/dist
+server/target
+data
+.env*
+.aws
+.backup
+.agents
+.claude
+.codex
+.gradle-home
+.pocket-id*
+.sheets.env.local
+native-android
+PrestoNative.apk
+web/test-results
+web/playwright-report
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Firebase server credentials (Android google-services.json is public client config)
+**/*service-account*.json
+**/td-personal-finance-*.json

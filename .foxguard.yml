@@ -1,0 +1,3 @@
+# Keep scanner findings visible; dependency advisories change over time.
+scan:
+  ignore_rules: []

@@ -1,0 +1,5 @@
+presto_app_name: presto-finance
+presto_domain: athena.timdumol.com
+presto_deploy_dir: /opt/presto-finance
+presto_caddy_sites_dir: /opt/caddy/sites-enabled
+presto_caddy_container: app-caddy-1
