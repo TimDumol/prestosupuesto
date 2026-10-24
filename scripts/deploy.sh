@@ -44,12 +44,13 @@ run_quietly() {
   fi
 }
 
-for command in docker curl gzip python3 ssh ansible-playbook jq getent; do
+for command in node npm docker curl gzip python3 ssh ansible-playbook jq getent; do
   command -v "$command" >/dev/null || {
     printf 'missing required command: %s\n' "$command" >&2
     exit 127
   }
 done
+node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); if (major !== 24 || minor < 22 || (minor === 22 && patch < 1)) { console.error("Deployment requires Node.js 24.22.1 or newer in the 24.x series (CVE-2026-111497)."); process.exit(1); }'
 [[ -r "$ENV_FILE" ]] || {
   printf 'server environment file is missing: %s\n' "$ENV_FILE" >&2
   exit 2
@@ -176,7 +177,7 @@ run_quietly 'bootstrap' bootstrap \
 run_quietly 'web dependencies' web-deps npm ci --prefix "$ROOT/web"
 run_quietly 'web typecheck' web-check npm run --prefix "$ROOT" web:typecheck
 run_quietly 'docker build' docker-build \
-  docker build --platform "$DOCKER_PLATFORM" --tag "$IMAGE_REF" "$ROOT"
+  docker build --pull --platform "$DOCKER_PLATFORM" --tag "$IMAGE_REF" "$ROOT"
 
 stream_image() {
   docker save "$IMAGE_REF" \

@@ -22,7 +22,7 @@ the server must support this callback before sign-in works.
 
 ## Development
 
-Use Node.js 22.13 or newer for tooling, Rust stable for the server, and the Android
+Use Node.js 24.22.1 or newer in the 24.x series for tooling, Rust stable for the server, and the Android
 toolchain above. Run `npm ci` and `npm ci --prefix web` to install JavaScript tools.
 Run `npm run lint`, `npm run typecheck`, `npm run test:web`, and `npm run web:build` for the web app. General lint includes the typography and browser accessibility checks.
 Native GitHub Actions builds the APK and runs synthetic emulator tests.
@@ -80,7 +80,7 @@ be in the Apps Script gateway allowlist and in the server's `ALLOWED_EMAILS`.
 
 Install the standalone browser dependencies, build its static bundle, then run
 the Rust server. No frontend dev server is needed. This requires Rust
-stable and Node.js 22.13 or newer:
+stable and Node.js 24.22.1 or newer in the 24.x series:
 
 ```bash
 npm install --prefix web

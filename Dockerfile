@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS web-build
+FROM node:24.22.1-bookworm-slim AS web-build
 WORKDIR /build/web
 COPY web/package.json ./
 COPY web/package-lock.json ./
@@ -9,7 +9,7 @@ RUN npm run build
 FROM rust:slim-bookworm AS rust-build
 WORKDIR /build/server
 COPY server/ ./
-RUN cargo build --release
+RUN cargo build --release --locked
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
