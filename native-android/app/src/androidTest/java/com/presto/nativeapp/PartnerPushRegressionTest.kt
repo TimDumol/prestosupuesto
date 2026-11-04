@@ -40,7 +40,11 @@ class PartnerPushRegressionTest {
         try {
             push.setEnabled(true)
             push.bind(session)
-            push.receive(message)
+            for (expiry in listOf("1", "invalid", (System.currentTimeMillis()/1000).toString())) {
+                push.receive(message + ("expiresAt" to expiry))
+                assertTrue(posted.isEmpty(), "Expired or malformed alerts must not display")
+            }
+            push.receive(message + ("expiresAt" to (System.currentTimeMillis()/1000+3600).toString()))
             val notification = posted.single().second
             assertEquals(message["body"], notification.extras.getCharSequence("android.text").toString())
             push.receive(message)

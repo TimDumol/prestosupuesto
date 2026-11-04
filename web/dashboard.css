@@ -1149,3 +1149,9 @@ ul.transaction-editor-error { padding-left: 34px; }
 
 .ledger-table .ant-table-column-title { min-width: 0; overflow-wrap: anywhere; }
 .ledger-table .tag { max-width: 100%; overflow-wrap: anywhere; }
+
+.transaction-editor .ant-select, .transaction-editor .ant-select-auto-complete { width: 100%; min-height: 44px; }
+.transaction-editor .ant-select input { box-shadow: none; }
+.description-suggestion-detail { display: block; color: #46584c; font-size: var(--text-body); }
+.ledger-table .ant-table-expanded-row > td { padding: 16px; white-space: normal; }
+.ledger-table .ant-table-expanded-row .transaction-editor-panel { margin: 0; }

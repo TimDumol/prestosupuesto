@@ -18,6 +18,141 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SyncRegressionTest {
+    @Test fun backgroundStartupAndIdleSyncAvoidNetworkAndRecovery(): Unit = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val namespace = "idle-background-${uuidV7()}"
+        val server = MockWebServer()
+        server.start()
+        val session = Session("a".repeat(64), "idle-background", "Test")
+        val api = FinanceApi(server.url("/").toString())
+        Vault(context, namespace).saveSession(session)
+        val checks = java.util.concurrent.atomic.AtomicInteger()
+        val repo = FinanceRepository(context, api, namespace, false, startupRecoveryLoader = {
+            checks.incrementAndGet()
+            null
+        })
+        try {
+            repo.start(background = true)
+            withTimeout(5_000) { repo.awaitReady() }
+            assertTrue(withTimeout(3_000) { repo.syncInBackground() })
+            assertNull(server.takeRequest(200, TimeUnit.MILLISECONDS))
+            assertEquals(0, checks.get(), "A background launch must not verify recovery archives")
+        } finally {
+            repo.close()
+            server.shutdown()
+            context.deleteDatabase("$namespace.db")
+            File(context.noBackupFilesDir, "$namespace-pocket-session.sealed").delete()
+        }
+    }
+
+    @Test fun concurrentForegroundRefreshesShareOneSnapshot(): Unit = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val namespace = "coalesced-refresh-${uuidV7()}"
+        val session = Session("a".repeat(64), "coalesced-refresh", "Test")
+        val server = MockWebServer()
+        val snapshots = java.util.concurrent.atomic.AtomicInteger()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when {
+                request.path == "/api/session" -> MockResponse().setBody("{\"pocketAuthenticated\":true}")
+                request.path!!.startsWith("/api/db/finance?") -> {
+                    snapshots.incrementAndGet()
+                    MockResponse().setBody(codec.encodeToString(Snapshot.serializer(), demoSnapshot()))
+                }
+                else -> MockResponse().setResponseCode(503)
+            }
+        }
+        server.start()
+        Vault(context, namespace).saveSession(session)
+        val repo = FinanceRepository(context, FinanceApi(server.url("/").toString()), namespace, false)
+        try {
+            repo.start(background = true)
+            repo.awaitReady()
+            coroutineScope {
+                List(5) { async { repo.sync(onlyIfStale = true, includeRecovery = false) } }
+                    .awaitAll().forEach { assertTrue(it) }
+            }
+            assertEquals(1, snapshots.get())
+            assertEquals(2, server.requestCount, "Only session validation and one snapshot are needed")
+        } finally {
+            repo.close()
+            server.shutdown()
+            context.deleteDatabase("$namespace.db")
+            File(context.noBackupFilesDir, "$namespace-pocket-session.sealed").delete()
+        }
+    }
+
+    @Test fun backgroundSyncReconcilesAcknowledgedWritesWithoutBackup(): Unit = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val namespace = "background-ack-${uuidV7()}"
+        val session = Session("a".repeat(64), "background-ack", "Test")
+        val snapshot = demoSnapshot()
+        val transaction = snapshot.recentTransactions.first()
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when {
+                request.path == "/api/session" -> MockResponse().setBody("{\"pocketAuthenticated\":true}")
+                request.path!!.startsWith("/api/db/finance?") ->
+                    MockResponse().setBody(codec.encodeToString(Snapshot.serializer(), snapshot))
+                else -> MockResponse().setResponseCode(503)
+            }
+        }
+        server.start()
+        val api = FinanceApi(server.url("/").toString())
+        val scope = "${session.owner}|${api.origin}"
+        val seed = Room.databaseBuilder(context, FinanceDatabase::class.java, "$namespace.db").build()
+        seed.finance().putCache(CacheRow(scope, codec.encodeToString(Snapshot.serializer(), snapshot)))
+        seed.finance().enqueue(OutboxRow(uuidV7(), scope, transaction.id, "{}",
+            codec.encodeToString(Transaction.serializer(), transaction), null, false,
+            status = "acknowledged", confirmedRevision = transaction.revision))
+        seed.close()
+        Vault(context, namespace).saveSession(session)
+        val repo = FinanceRepository(context, api, namespace, false)
+        try {
+            repo.start(background = true)
+            repo.awaitReady()
+            assertTrue(repo.syncInBackground())
+            assertTrue(repo.state.value.outbox.isEmpty())
+            assertEquals(2, server.requestCount, "Background sync must not download a recovery export")
+            assertTrue(repo.syncInBackground())
+            assertEquals(2, server.requestCount, "An empty outbox must stay idle")
+        } finally {
+            repo.close()
+            server.shutdown()
+            context.deleteDatabase("$namespace.db")
+            File(context.noBackupFilesDir, "$namespace-pocket-session.sealed").delete()
+        }
+    }
+
+    @Test fun saveDoesNotWaitForStartupRecoveryVerification(): Unit = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val namespace = "startup-recovery-${uuidV7()}"
+        val verifying = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val repo = FinanceRepository(context, FinanceApi("http://127.0.0.1:1"), namespace, false,
+            startupRecoveryLoader = {
+                verifying.countDown()
+                check(release.await(30, TimeUnit.SECONDS))
+                null
+            })
+        try {
+            repo.start()
+            assertTrue(verifying.await(5, TimeUnit.SECONDS))
+            withTimeout(3_000) { repo.awaitReady() }
+            repo.updateDraft(repo.state.value.draft.copy(amount = "7.50", description = "During recovery verification"))
+            assertTrue(withTimeout(3_000) { repo.save(false) })
+            assertEquals(1L, release.count, "Recovery must still be stalled when save completes")
+            val stored = Room.databaseBuilder(context, FinanceDatabase::class.java, "$namespace.db").build()
+            try {
+                val snapshot = codec.decodeFromString<Snapshot>(stored.finance().cache("demo|${repo.api.origin}")!!.snapshot)
+                assertEquals(1, snapshot.recentTransactions.count { it.description == "During recovery verification" })
+            } finally { stored.close() }
+        } finally {
+            release.countDown()
+            repo.close()
+            context.deleteDatabase("$namespace.db")
+        }
+    }
+
     @Test fun acceptedSaveSurvivesCallerCancellation(): Unit = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val namespace = "cancelled-save-${uuidV7()}"

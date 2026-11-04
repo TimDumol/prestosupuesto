@@ -3,7 +3,8 @@ import { transactionPreview } from './lib/transactionPreview';
 import { useCallback, useEffect, useRef, useState, useId } from 'react';
 import type { FormEvent, InputHTMLAttributes, ReactNode } from 'react';
 import DatePicker from 'react-datepicker';
-import { Select, Table } from 'antd';
+import { AutoComplete, Select, Table } from 'antd';
+import { descriptionSuggestions, mostUsedAccount, suggestedCategory, applyDescriptionSuggestion } from './transactionSuggestions';
 import { readTransactionDraft, transactionDraftKey, writeTransactionDraft } from './transactionDraft';
 import type { TransactionDraft } from './transactionDraft';
 import { monthCloseChecklist } from './monthCloseChecklist';
@@ -1114,11 +1115,11 @@ function transactionDraft(snapshot: FinanceSnapshot, item?: GatewayTransaction):
   const accounts = snapshot.accounts;
   const categories = snapshot.budgets;
   const sourceAccount = item?.fromAccount && accounts.some(account => account.name === item.fromAccount)
-    ? item.fromAccount : accounts[0]?.name ?? '';
+    ? item.fromAccount : mostUsedAccount(snapshot)?.name ?? accounts[0]?.name ?? '';
   const destinationAccount = item?.toAccount && accounts.some(account => account.name === item.toAccount)
-    ? item.toAccount : accounts.find(account => account.name !== sourceAccount)?.name ?? accounts[0]?.name ?? '';
+    ? item.toAccount : item?.kind === 'income' ? mostUsedAccount(snapshot)?.name ?? '' : accounts.find(account => account.name !== sourceAccount)?.name ?? accounts[0]?.name ?? '';
   const category = (name: string | null | undefined) => name && categories.some(item => item.name === name)
-    ? name : categories[0]?.name ?? '';
+    ? name : categories.find(item => item.name !== 'Unallocated')?.name ?? '';
   const kind = item?.kind && ['expense', 'income', 'transfer', 'reallocate'].includes(item.kind)
     ? item.kind as SubmitTransaction['kind'] : 'expense';
   const defaultCurrency = kind === 'income'
@@ -1156,6 +1157,18 @@ function TransactionEditor({ snapshot, initial, saving, onCancel, onSave, user }
   const [error, setError] = useState('');
   const [draftSaved, setDraftSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const manualFields = useRef(new Set<string>(draft.description ? ['fromAccount', 'toAccount', 'fromCategory', 'toCategory'] : []));
+  const [suggestionHistory, setSuggestionHistory] = useState<GatewayTransaction[]>([]);
+  useEffect(() => {
+    let active = true;
+    setSuggestionHistory([]);
+    // Match draft descriptions locally so unsaved text stays out of request logs.
+    getTransactions({ kind: draft.kind, page: 1, pageSize: 100 })
+      .then(result => { if (active) setSuggestionHistory(result.transactions); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [draft.kind]);
+  const suggestions = descriptionSuggestions(draft.description, [...suggestionHistory, ...snapshot.recentTransactions], draft.kind, initial?.transactionId);
   const [detailsOpen, setDetailsOpen] = useState(Boolean(draft.correctsTransactionId));
   useEffect(() => {
     const restored = readTransactionDraft(draftKey, transactionDraft(snapshot, initial));
@@ -1199,7 +1212,17 @@ function TransactionEditor({ snapshot, initial, saving, onCancel, onSave, user }
     && (!crossCurrency || (toAmount !== null && toAmount > 0));
   function update<K extends keyof TransactionDraft>(key: K, value: TransactionDraft[K]) {
     setDirty(true);
-    setDraft(current => ({ ...current, [key]: value }));
+    manualFields.current.add(key);
+    setDraft(current => {
+      const next = { ...current, [key]: value };
+      if (key === 'description' && !initial && next.kind === 'expense' && !manualFields.current.has('fromCategory')) next.fromCategory = suggestedCategory(String(value), { ...snapshot, recentTransactions: [...suggestionHistory, ...snapshot.recentTransactions] }) ?? next.fromCategory;
+      if ((key === 'description' || key === 'fromCategory') && !initial && next.kind === 'expense' && !manualFields.current.has('fromAccount')) {
+        const account = mostUsedAccount(snapshot, next.fromCategory);
+        if (account) { next.fromAccount = account.name; next.currency = account.currency; }
+      }
+      if (key === 'fromAccount' || key === 'toAccount') next.toAmount = '';
+      return next;
+    });
     setError('');
   }
   function changeKind(kind: SubmitTransaction['kind']) {
@@ -1207,8 +1230,9 @@ function TransactionEditor({ snapshot, initial, saving, onCancel, onSave, user }
     setDraft(current => ({
       ...current,
       kind,
+      toAccount: kind === 'income' && !initial && !manualFields.current.has('toAccount') ? mostUsedAccount(snapshot)?.name ?? current.toAccount : current.toAccount,
       currency: kind === 'reallocate' ? 'EUR' : snapshot.accounts.find(account =>
-        account.name === (kind === 'income' ? current.toAccount : current.fromAccount))?.currency ?? current.currency,
+        account.name === (kind === 'income' ? (!initial && !manualFields.current.has('toAccount') ? mostUsedAccount(snapshot)?.name ?? current.toAccount : current.toAccount) : current.fromAccount))?.currency ?? current.currency,
       fromCategory: kind === 'expense' || kind === 'reallocate' ? current.fromCategory || snapshot.budgets[0]?.name || '' : '',
       toCategory: kind === 'income' || kind === 'reallocate' ? current.toCategory || snapshot.budgets.find(item => item.name !== current.fromCategory)?.name || '' : '',
     }));
@@ -1259,7 +1283,7 @@ function TransactionEditor({ snapshot, initial, saving, onCancel, onSave, user }
       {draft.kind === 'income' ? <>
         <label><span>Income treatment</span><select aria-label="Income treatment" value={draft.incomeTreatment} disabled={saving} onChange={event => update('incomeTreatment', event.target.value as TransactionDraft['incomeTreatment'])}>
           <option value="salary">Salary · settle expected income</option><option value="unexpected">Unexpected income · Unallocated</option><option value="refund">Refund · restore category</option>
-          {initial?.incomeTreatment === 'legacy' ? <option value="legacy">Preserve existing category credit</option> : null}
+          {draft.incomeTreatment === 'legacy' ? <option value="legacy">Preserve existing category credit</option> : null}
         </select></label>
         {draft.incomeTreatment === 'salary' ? <label><span>Expected salary month</span><select aria-label="Expected salary month" value={draft.expectedIncomeMonth} disabled={saving} onChange={event => update('expectedIncomeMonth', event.target.value)}>
           {snapshot.budgetCoverage?.expectations.filter(e => !e.completedMonth).map(e => <option key={e.month} value={e.month}>{monthLabel(e.month)} · {currency(e.outstandingEur)} outstanding</option>)}
@@ -1267,11 +1291,11 @@ function TransactionEditor({ snapshot, initial, saving, onCancel, onSave, user }
         <p className="funding-detail">{draft.incomeTreatment === 'salary' ? 'Receipt increases cash. Your category allocations are already in the plan; any excess goes to Unallocated.' : draft.incomeTreatment === 'unexpected' ? 'Receipt increases cash and Unallocated. Allocate it explicitly when desired.' : draft.incomeTreatment === 'refund' ? 'Receipt increases cash and restores the selected spending category.' : 'This existing receipt retains its original category effect.'}</p>
       </> : null}
       <label><span>Transaction date · {monthLabel(snapshot.budgetMonth)}</span><input type="date" min={snapshot.budgetMonth + '-01'} max={lastDayOfMonth(snapshot.budgetMonth)} value={draft.date} disabled={saving} onChange={event => update('date', event.target.value)} /></label>
-      <label className="transaction-description-field"><span>Description</span><input value={draft.description} maxLength={500} disabled={saving} onChange={event => update('description', event.target.value)} placeholder="What was this transaction for?" /></label>
-      {(draft.kind === 'expense' || draft.kind === 'reallocate') ? <label><span>{draft.kind === 'expense' ? 'Budget category' : 'Move from'}</span><select aria-label={draft.kind === 'expense' ? 'Budget category' : 'Move from'} value={draft.fromCategory} disabled={saving} onChange={event => update('fromCategory', event.target.value)}><option value="">Choose category</option>{snapshot.budgets.filter(item => draft.kind === "reallocate" || item.name !== "Unallocated").map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label> : null}
-      {(draft.kind === 'reallocate' || draft.kind === 'income' && (draft.incomeTreatment === 'refund' || draft.incomeTreatment === 'legacy')) ? <label><span>{draft.kind === 'income' ? 'Budget category' : 'Move to'}</span><select aria-label={draft.kind === 'income' ? 'Budget category' : 'Move to'} value={draft.toCategory} disabled={saving} onChange={event => update('toCategory', event.target.value)}><option value="">Choose category</option>{snapshot.budgets.filter(item => draft.kind === "reallocate" || item.name !== "Unallocated").map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label> : null}
-      {(draft.kind === 'expense' || draft.kind === 'transfer') ? <label><span>{draft.kind === 'expense' ? 'Account' : 'From account'}</span><select aria-label={draft.kind === 'expense' ? 'Account' : 'From account'} value={draft.fromAccount} disabled={saving} onChange={event => { update('fromAccount', event.target.value); if (draft.kind !== 'reallocate') update('currency', snapshot.accounts.find(account => account.name === event.target.value)?.currency ?? 'EUR'); }}><option value="">Choose account</option>{snapshot.accounts.map(item => <option key={item.name} value={item.name}>{item.name} · {item.currency}</option>)}</select></label> : null}
-      {(draft.kind === 'income' || draft.kind === 'transfer') ? <label><span>{draft.kind === 'income' ? 'Deposit account' : 'To account'}</span><select aria-label={draft.kind === 'income' ? 'Deposit account' : 'To account'} value={draft.toAccount} disabled={saving} onChange={event => { update('toAccount', event.target.value); if (draft.kind === 'income') update('currency', snapshot.accounts.find(account => account.name === event.target.value)?.currency ?? 'EUR'); }}><option value="">Choose account</option>{snapshot.accounts.map(item => <option key={item.name} value={item.name}>{item.name} · {item.currency}</option>)}</select></label> : null}
+      <label className="transaction-description-field"><span>Description</span><AutoComplete virtual={false} aria-label="Description" value={draft.description} disabled={saving} options={suggestions.map(item => ({ value: item.description, label: <div><strong>{item.description}</strong><small className="description-suggestion-detail">{[item.fromCategory || item.toCategory, item.fromAccount || item.toAccount].filter(Boolean).join(' · ')}</small></div> }))} onChange={value => update('description', value)} onSelect={value => { const item = suggestions.find(item => item.description === value); if (item) { setDraft(current => applyDescriptionSuggestion(current, item, snapshot)); ['fromAccount', 'toAccount', 'fromCategory', 'toCategory'].forEach(field => manualFields.current.add(field)); setDirty(true); } }}><input maxLength={500} placeholder="What was this transaction for?" /></AutoComplete></label>
+      {(draft.kind === 'expense' || draft.kind === 'reallocate') ? <label><span>{draft.kind === 'expense' ? 'Budget category' : 'Move from'}</span><Select virtual={false} showSearch={{ optionFilterProp: 'label' }} aria-label={draft.kind === 'expense' ? 'Budget category' : 'Move from'} value={draft.fromCategory} disabled={saving} onChange={value => update('fromCategory', value)} options={snapshot.budgets.filter(item => draft.kind === "reallocate" || item.name !== "Unallocated").map(item => ({ value: item.name, label: item.name }))} /></label> : null}
+      {(draft.kind === 'reallocate' || draft.kind === 'income' && (draft.incomeTreatment === 'refund' || draft.incomeTreatment === 'legacy')) ? <label><span>{draft.kind === 'income' ? 'Budget category' : 'Move to'}</span><Select virtual={false} showSearch={{ optionFilterProp: 'label' }} aria-label={draft.kind === 'income' ? 'Budget category' : 'Move to'} value={draft.toCategory} disabled={saving} onChange={value => update('toCategory', value)} options={snapshot.budgets.filter(item => draft.kind === "reallocate" || item.name !== "Unallocated").map(item => ({ value: item.name, label: item.name }))} /></label> : null}
+      {(draft.kind === 'expense' || draft.kind === 'transfer') ? <label><span>{draft.kind === 'expense' ? 'Account' : 'From account'}</span><Select virtual={false} showSearch={{ optionFilterProp: 'label' }} aria-label={draft.kind === 'expense' ? 'Account' : 'From account'} value={draft.fromAccount} disabled={saving} onChange={value => { update('fromAccount', value); if (draft.kind !== 'reallocate') update('currency', snapshot.accounts.find(account => account.name === value)?.currency ?? 'EUR'); }} options={snapshot.accounts.map(item => ({ value: item.name, label: item.name + ' · ' + item.currency }))} /></label> : null}
+      {(draft.kind === 'income' || draft.kind === 'transfer') ? <label><span>{draft.kind === 'income' ? 'Deposit account' : 'To account'}</span><Select virtual={false} showSearch={{ optionFilterProp: 'label' }} aria-label={draft.kind === 'income' ? 'Deposit account' : 'To account'} value={draft.toAccount} disabled={saving} onChange={value => { update('toAccount', value); if (draft.kind === 'income') update('currency', snapshot.accounts.find(account => account.name === value)?.currency ?? 'EUR'); }} options={snapshot.accounts.map(item => ({ value: item.name, label: item.name + ' · ' + item.currency }))} /></label> : null}
       <label><span>{draft.kind === 'reallocate' ? 'Amount · EUR' : 'Amount'}</span><NumericInput aria-label="Amount" value={draft.amount} disabled={saving} onChange={value => update('amount', value)} placeholder="0.00" /></label>
       {draft.kind !== 'reallocate' ? <label><span>Currency</span><select aria-label="Currency" value={draft.currency} disabled={saving} onChange={event => update('currency', event.target.value as Currency)}><option value="EUR">EUR</option><option value="USD">USD</option><option value="PHP">PHP</option></select></label> : null}
       {crossCurrency ? <label><span>Amount received · {destinationAccount?.currency}</span><NumericInput aria-label={'Amount received · ' + destinationAccount?.currency} value={draft.toAmount} disabled={saving} onChange={value => update('toAmount', value)} placeholder="0.00" /></label> : null}
@@ -1433,7 +1457,7 @@ function LedgerPage({ snapshot, onRefresh, mutation, onMutation, user, filter, o
   return (
     <>
       <div className="page-intro"><div><div className="eyebrow">TRANSACTIONS</div><h1>Transactions</h1><p>{snapshot.transactionCount.toLocaleString('en-GB')} transactions · {allHistory ? 'searching all history' : 'viewing ' + monthLabel(snapshot.budgetMonth)}.</p></div><div className="ledger-page-actions"><button className="button button-primary" type="button" disabled={!currentMonth || mutation !== ''} title={currentMonth ? undefined : 'Select an open budget month to add a transaction.'} onClick={() => { setEditor('new'); setMessage(''); }}>＋ Add / resume transaction</button>{!currentMonth ? <small>Select an open month to add a transaction.</small> : null}</div></div>
-      {editor ? <TransactionEditor key={snapshot.budgetMonth + (editor === 'new' ? 'new' : editor.transactionId)} user={user} snapshot={snapshot} initial={editor === 'new' ? undefined : editor} saving={mutation === 'transaction'} onCancel={() => setEditor(null)} onSave={saveTransaction} /> : null}
+      {editor === 'new' ? <TransactionEditor key={snapshot.budgetMonth + 'new'} user={user} snapshot={snapshot} initial={undefined} saving={mutation === 'transaction'} onCancel={() => setEditor(null)} onSave={saveTransaction} /> : null}
       {categoryBalance ? <Panel><SectionHeading eyebrow="BALANCE BREAKDOWN" title={categoryBalance.name + ' · ' + monthLabel(snapshot.budgetMonth)} />
         {categoryBalance.carryoverEur !== null && categoryBalance.carryoverEur !== undefined && categoryBalance.netSpendingEur !== null && categoryBalance.netSpendingEur !== undefined ? <p>
           Carryover {currency(categoryBalance.carryoverEur)} + allocation {currency(categoryBalance.monthlyEur)} − net spending {currency(categoryBalance.netSpendingEur)} + adjustments ({signedCurrency(categoryBalance.adjustmentEur ?? 0, 'EUR')}) = remaining {currency(categoryBalance.remainingEur)}
@@ -1453,8 +1477,8 @@ function LedgerPage({ snapshot, onRefresh, mutation, onMutation, user, filter, o
             options={['All types', 'Expense', 'Income', 'Transfer', 'Budget move', 'Reconciliation'].map((value) => ({ value, label: value }))}
           />
           <label className="check-switch"><input type="checkbox" checked={allHistory} onChange={event => { setAllHistory(event.target.checked); setPageNumber(1); }} />All history</label>
-          <Select aria-label="Filter by category" placeholder="All categories" allowClear value={category || undefined} onChange={value => { setCategory(value ?? ''); setPageNumber(1); }} options={snapshot.budgets.map(item => ({ value: item.name, label: item.name }))} />
-          <Select aria-label="Filter by account" placeholder="All accounts" allowClear value={account || undefined} onChange={value => { setAccount(value ?? ''); setPageNumber(1); }} options={snapshot.accounts.map(item => ({ value: item.name, label: item.name }))} />
+          <Select virtual={false} showSearch={{ optionFilterProp: 'label' }} aria-label="Filter by category" placeholder="All categories" allowClear value={category || undefined} onChange={value => { setCategory(value ?? ''); setPageNumber(1); }} options={snapshot.budgets.map(item => ({ value: item.name, label: item.name }))} />
+          <Select virtual={false} showSearch={{ optionFilterProp: 'label' }} aria-label="Filter by account" placeholder="All accounts" allowClear value={account || undefined} onChange={value => { setAccount(value ?? ''); setPageNumber(1); }} options={snapshot.accounts.map(item => ({ value: item.name, label: item.name }))} />
           <span className="panel-caption">{fetching ? 'Loading…' : total.toLocaleString('en-GB') + ' matching transactions'}</span>
           <button type="button" className="text-button" onClick={() => { setQuery(''); setSearch(''); setKind('All types'); setCategory(''); setAccount(''); setPageNumber(1); }}>Clear filters</button>
         </div>
@@ -1469,7 +1493,12 @@ function LedgerPage({ snapshot, onRefresh, mutation, onMutation, user, filter, o
           }}
           className="sortable-table ledger-table"
           rowKey={item => String(item.transactionId || item.row)}
-          dataSource={rows}
+          expandable={{
+            expandedRowKeys: editor && editor !== 'new' ? [String(editor.transactionId || editor.row)] : [],
+            showExpandColumn: false,
+            expandedRowRender: item => editor && editor !== 'new' && editor.transactionId === item.transactionId ? <TransactionEditor key={snapshot.budgetMonth + item.transactionId} user={user} snapshot={snapshot} initial={editor} saving={mutation === 'transaction'} onCancel={() => setEditor(null)} onSave={saveTransaction} /> : null,
+          }}
+          dataSource={editor && editor !== 'new' && !rows.some(item => item.transactionId === editor.transactionId) ? [editor, ...rows] : rows}
           pagination={{ current: pageNumber, pageSize, total, showSizeChanger: true, pageSizeOptions: [25, 50, 100], onChange: (page, size) => { setPageNumber(size !== pageSize ? 1 : page); setPageSize(size); } }}
           tableLayout="fixed"
           scroll={{ x: '100%' }}

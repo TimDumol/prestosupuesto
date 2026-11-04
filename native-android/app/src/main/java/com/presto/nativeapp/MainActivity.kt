@@ -130,7 +130,6 @@ class PrestoViewModel(val repository: FinanceRepository) : ViewModel() {
     fun openNotificationTransaction(id: String, subject: String) {
         viewModelScope.launch {
             repository.awaitReady()
-            repository.sync()
             notificationTransaction.value = repository.notificationTransaction(id, subject)
         }
     }
@@ -152,12 +151,7 @@ class PrestoViewModel(val repository: FinanceRepository) : ViewModel() {
 
     fun refreshIfStale() = repository.refreshIfStale()
 
-    fun refresh() {
-        viewModelScope.launch {
-            repository.awaitReady()
-            repository.sync()
-        }
-    }
+    fun refresh() = repository.refreshIfStale()
 
     fun login(handoff: String, verifier: String, signedIn: () -> Unit) {
         viewModelScope.launch { if (repository.login(handoff, verifier)) signedIn() }

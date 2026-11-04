@@ -93,6 +93,10 @@ internal class PartnerPush(private val context: Context, namespace: String,
         val transaction = message["transactionId"] ?: return
         if (prefs.getString("sessionHash", null) != message["recipientSession"]) return
         if (!canReceive(subject) || !validId(event) || !validId(transaction)) return
+        // FCM can deliver late after being offline. Preserve compatibility with older senders.
+        message["expiresAt"]?.let { expiry ->
+            if ((expiry.toLongOrNull() ?: return) <= System.currentTimeMillis() / 1000) return
+        }
         if (!notifications.enabled()) return
         val seen = prefs.getString("seen", "")!!.split(',').filter { it.isNotBlank() }
         if (event in seen) return

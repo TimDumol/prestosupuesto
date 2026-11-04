@@ -32,8 +32,10 @@ test('duplicate warning permits legitimate separate household purchases', async 
   const form = page.locator('.transaction-editor');
   await form.getByLabel('Description', { exact: true }).fill('Weekly groceries neighbourhood market');
   await form.getByLabel('Amount', { exact: true }).fill('87.35');
-  await form.getByLabel('Budget category', { exact: true }).selectOption('Groceries');
-  await form.getByLabel('Account', { exact: true }).selectOption('Household checking');
+  await form.getByLabel('Budget category', { exact: true }).click();
+  await page.getByRole('option', { name: 'Groceries', exact: true }).filter({ visible: true }).last().click();
+  await form.getByLabel('Account', { exact: true }).click();
+  await page.getByRole('option', { name: 'Household checking · EUR', exact: true }).filter({ visible: true }).last().click();
   await form.getByLabel('Transaction date · October 2026', { exact: true }).fill('2026-10-17');
   page.once('dialog', async dialog => { expect(dialog.message()).toContain('Possible duplicate'); await dialog.dismiss(); });
   await form.getByRole('button', { name: 'Add transaction', exact: true }).click();

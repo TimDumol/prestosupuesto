@@ -190,12 +190,16 @@ impl FcmSender {
         session: &str,
         title: &str,
         body: &str,
+        expires_at: i64,
     ) -> anyhow::Result<Delivery> {
+        let Some(ttl) = remaining_ttl(expires_at, now()) else {
+            return Ok(Delivery::PermanentFailure);
+        };
         // Data-only messages let the client enforce opt-out, account identity and deduplication
         // before displaying anything, even while in the background.
         let response = self.http.post(&self.send_url).bearer_auth(access_token).json(&json!({"message":{
-            "token":device,"data":{"eventId":event,"transactionId":transaction,"recipientSubject":subject,"recipientSession":session,"title":title,"body":body},
-            "android":{"priority":"high","ttl":"86400s"}}}))
+            "token":device,"data":{"eventId":event,"transactionId":transaction,"recipientSubject":subject,"recipientSession":session,"title":title,"body":body,"expiresAt":expires_at.to_string()},
+            "android":{"priority":"high","ttl":format!("{ttl}s")}}}))
             .send().await.map_err(|_| anyhow::anyhow!("FCM send transport failed"))?;
         let status = response.status().as_u16();
         if status == 401 {
@@ -220,6 +224,12 @@ impl FcmSender {
         );
         Ok(delivery)
     }
+}
+
+// Retries share the original event deadline; never renew an old alert's lifetime.
+fn remaining_ttl(expires_at: i64, at: i64) -> Option<i64> {
+    let remaining = expires_at.saturating_sub(at);
+    (remaining > 0).then_some(remaining.min(86400))
 }
 
 #[derive(Debug, PartialEq)]
@@ -343,6 +353,7 @@ async fn drain(
                 &row.try_get::<String, _>("session_hash")?,
                 &row.try_get::<String, _>("title")?,
                 &row.try_get::<String, _>("body")?,
+                row.try_get::<i64, _>("created_at")?.saturating_add(86400),
             )
             .await
             .unwrap_or(Delivery::Retry(60))
@@ -384,6 +395,14 @@ async fn drain(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retries_do_not_extend_event_lifetime() {
+        assert_eq!(remaining_ttl(86500, 100), Some(86400));
+        assert_eq!(remaining_ttl(86500, 86500 - 30), Some(30));
+        assert_eq!(remaining_ttl(86500, 86500), None);
+        assert_eq!(remaining_ttl(86500, 86501), None);
+    }
 
     #[test]
     fn provider_failures_are_classified_without_discarding_good_devices() {

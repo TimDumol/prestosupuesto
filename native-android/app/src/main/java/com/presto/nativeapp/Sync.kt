@@ -20,27 +20,39 @@ object SyncScheduler {
         WorkManager.getInstance(context)
             .enqueueUniqueWork(
                 name(scope),
-                ExistingWorkPolicy.KEEP,
+                // A save arriving as a worker finishes must leave a durable successor.
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
                 OneTimeWorkRequestBuilder<FinanceWorker>()
                     .setConstraints(constraints)
                     .setInputData(data)
                     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                     .build(),
             )
-        WorkManager.getInstance(context)
-            .enqueueUniquePeriodicWork(
-                name(scope) + "-periodic",
-                ExistingPeriodicWorkPolicy.KEEP,
-                PeriodicWorkRequestBuilder<FinanceWorker>(15, TimeUnit.MINUTES)
-                    .setConstraints(constraints)
-                    .setInputData(data)
-                    .build(),
-            )
+        ensureSafetyWork(context, scope)
+    }
+
+    fun maintain(context: Context, scope: String, hasPending: Boolean = false) {
+        if (hasPending) schedule(context, scope) else ensureSafetyWork(context, scope)
+    }
+
+    private fun ensureSafetyWork(context: Context, scope: String) {
+        WorkManager.getInstance(context).cancelUniqueWork(name(scope) + "-periodic")
+        // Keep one infrequent fallback; saved entries get immediate one-time work above.
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            name(scope) + "-safety",
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<FinanceWorker>(6, TimeUnit.HOURS)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setInputData(workDataOf("scope" to scope))
+                .setInitialDelay(6, TimeUnit.HOURS)
+                .build(),
+        )
     }
 
     fun cancel(context: Context, scope: String) {
         WorkManager.getInstance(context).cancelUniqueWork(name(scope))
         WorkManager.getInstance(context).cancelUniqueWork(name(scope) + "-periodic")
+        WorkManager.getInstance(context).cancelUniqueWork(name(scope) + "-safety")
     }
 
     fun notification(context: Context, count: Int) {
@@ -97,6 +109,6 @@ class FinanceWorker(context: Context, parameters: WorkerParameters) :
                 inputData.getString("scope") != "${state.owner}|${repo.api.origin}"
         )
             return Result.success()
-        return if (repo.sync()) Result.success() else Result.retry()
+        return if (repo.syncInBackground()) Result.success() else Result.retry()
     }
 }

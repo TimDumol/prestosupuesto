@@ -12,12 +12,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 
 class PrestoApplication : Application() {
-    val repository by lazy { FinanceRepository(this) }
+    val repository by lazy { FinanceRepository(this).also { it.start(background = true) } }
 
     override fun onCreate() {
         super.onCreate()
         PartnerPush.initialize(this)
-        repository.start()
     }
 }
 
@@ -53,6 +52,7 @@ class FinanceRepository(
     val api: FinanceApi = FinanceApi(BuildConfig.API_URL),
     private val namespace: String = "presto-native",
     private val scheduleWork: Boolean = true,
+    private val startupRecoveryLoader: ((String) -> RecoveryInfo?)? = null,
 ) {
     private val diagnostics = Diagnostics()
     val logs = diagnostics.logs
@@ -185,16 +185,10 @@ class FinanceRepository(
         }
     }
 
-    fun start() {
+    // Workers load local state only. Foreground callers also refresh and inspect recovery.
+    fun start(background: Boolean = false) {
         lifetime.launch {
             try {
-                context.cacheDir
-                    .listFiles()
-                    ?.filter {
-                        it.name.startsWith("recovery-") &&
-                            System.currentTimeMillis() - it.lastModified() > 24 * 60 * 60 * 1000L
-                    }
-                    ?.forEach { it.delete() }
                 val session =
                     runCatching { vault.session() }
                         .getOrElse {
@@ -223,16 +217,42 @@ class FinanceRepository(
                             .getOrNull() ?: defaultDraft(_state.value.snapshot)
                     _state.update { it.copy(ready = true, session = session, draft = draft) }
                 }
-                _state.update { it.copy(recovery = recoveryStore.latestInfo(scope(owner))) }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(ready = true, error = failureDetails("Open saved finance data", e)) }
             } finally {
                 initialized.complete(Unit)
             }
-            if (_state.value.session != null) {
-                if (scheduleWork) SyncScheduler.schedule(context, scope())
-                sync()
+            if (!background) refreshIfStale()
+        }
+    }
+
+    private val verifiedRecoveryScopes = mutableSetOf<String>()
+
+    private fun verifyRecoveryInForeground() {
+        val recoveryOwner = _state.value.owner
+        val recoveryScope = scope(recoveryOwner)
+        if (!synchronized(verifiedRecoveryScopes) { verifiedRecoveryScopes.add(recoveryScope) }) return
+        lifetime.launch {
+            val started = android.os.SystemClock.elapsedRealtime()
+            try {
+                context.cacheDir.listFiles()?.filter {
+                    it.name.startsWith("recovery-") &&
+                        System.currentTimeMillis() - it.lastModified() > 24 * 60 * 60 * 1000L
+                }?.forEach { it.delete() }
+                val info = if (startupRecoveryLoader != null) startupRecoveryLoader.invoke(recoveryScope)
+                    else recoveryStore.latestInfo(recoveryScope)
+                _state.update {
+                    if (it.owner == recoveryOwner && it.recovery == null)
+                        it.copy(recovery = info) else it
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                if (_state.value.owner == recoveryOwner) _state.update {
+                    it.copy(recoveryIssue = failureDetails("Verify saved recovery snapshot", e))
+                }
+            } finally {
+                diagnostics.record("Startup recovery verification finished in ${android.os.SystemClock.elapsedRealtime() - started} ms")
             }
         }
     }
@@ -248,8 +268,32 @@ class FinanceRepository(
     }
 
     fun refreshIfStale() {
-        if (_state.value.session != null && System.currentTimeMillis() - lastReadAt > 60_000)
-            lifetime.launch { sync() }
+        lifetime.launch {
+            awaitReady()
+            // Cold FCM/worker starts must not decrypt recovery files or download snapshots.
+            verifyRecoveryInForeground()
+            if (_state.value.session != null) {
+                if (scheduleWork) SyncScheduler.maintain(context, scope(), _state.value.outbox.any {
+                    it.status == "pending" || it.status == "acknowledged"
+                })
+                sync(onlyIfStale = true)
+            }
+        }
+    }
+
+    suspend fun syncInBackground(): Boolean {
+        awaitReady()
+        if (_state.value.session == null) return true
+        // Blocked entries need user action; they must not cause endless network retries.
+        val result = if (_state.value.outbox.any { it.status == "pending" || it.status == "acknowledged" }) {
+            sync(onlyIfStale = true, includeRecovery = false)
+        } else {
+            refreshPushRegistration()
+            true
+        }
+        // Registration belongs to this worker's lifetime, including on a cold process start.
+        pushJob?.join()
+        return result
     }
 
     fun dismissMessage() {
@@ -403,8 +447,10 @@ class FinanceRepository(
         _state.update { it.copy(saving = true, error = null) }
         // An accepted disk write belongs to the repository, not the screen awaiting its result.
         return lifetime.async {
+            val dispatched = android.os.SystemClock.elapsedRealtime()
             try {
                 awaitReady()
+                diagnostics.record("Save ready after ${android.os.SystemClock.elapsedRealtime() - started} ms; dispatch ${dispatched - started} ms")
                 draftJob?.cancel()
                 // No join: autosave uses the same lock and checks that its draft is still current.
                 val (savedScope, demo) = commitEntry(addAnother, acceptedOwner, approvedReview)
@@ -426,12 +472,13 @@ class FinanceRepository(
 
     /** All validation and durable writes run on the repository's IO scope. No network calls. */
     private suspend fun commitEntry(addAnother: Boolean, acceptedOwner: String, approvedReview: DuplicateReview?): Pair<String, Boolean> =
-        mutation.withLock {
+        timedSaveMutation {
             val current = _state.value
             require(current.owner == acceptedOwner) { "The account changed. Review this entry before saving." }
             // A quick save can beat the UI's asynchronous history suggestions.
             val s = current.copy(draft = suggestDraftLinks(current.draft, current.snapshot))
             val (payload, optimistic) = writeEntry(s.draft, s.snapshot)
+            diagnostics.record("Save prepared operation ${payload.operationId}")
             require(
                 s.outbox.none {
                     it.transactionId == payload.transactionId &&
@@ -535,6 +582,7 @@ class FinanceRepository(
                     DraftRow(scope(), codec.encodeToString(Draft.serializer(), nextDraft))
                 )
             }
+            diagnostics.record("Save committed operation ${payload.operationId}")
             rebuild()
             _state.update {
                 it.copy(
@@ -545,6 +593,17 @@ class FinanceRepository(
             }
             scope(s.owner) to s.demo
         }
+
+    private suspend fun <T> timedSaveMutation(block: suspend () -> T): T {
+        val started = android.os.SystemClock.elapsedRealtime()
+        return mutation.withLock {
+            val acquired = android.os.SystemClock.elapsedRealtime()
+            diagnostics.record("Save acquired mutation lock after ${acquired - started} ms")
+            try { block() } finally {
+                diagnostics.record("Save local work finished in ${android.os.SystemClock.elapsedRealtime() - acquired} ms")
+            }
+        }
+    }
 
     private fun syncSavedEntry(savedScope: String, demo: Boolean) {
         lifetime.launch {
@@ -634,11 +693,19 @@ class FinanceRepository(
     }
 
     // Room suspends only its queries; parsing, overlays, diagnostics and recovery also need IO.
-    suspend fun sync(): Boolean = withContext(Dispatchers.IO) { syncOnIo() }
+    suspend fun sync(onlyIfStale: Boolean = false, includeRecovery: Boolean = true): Boolean =
+        withContext(Dispatchers.IO) { syncOnIo(onlyIfStale, includeRecovery) }
 
-    private suspend fun syncOnIo(): Boolean {
+    private suspend fun syncOnIo(onlyIfStale: Boolean, includeRecovery: Boolean): Boolean {
         awaitReady()
         syncMutex.lock()
+        // Check after taking the lock so concurrent resume/start requests share one refresh.
+        if (onlyIfStale && lastReadAt != 0L &&
+            android.os.SystemClock.elapsedRealtime() - lastReadAt < 60_000 &&
+            _state.value.outbox.none { it.status == "pending" || it.status == "acknowledged" }) {
+            syncMutex.unlock()
+            return true
+        }
         var retry = false
         var acknowledgedWrite = false
         var hadPendingWrites = false
@@ -753,7 +820,7 @@ class FinanceRepository(
                         )
                         acknowledged.forEach { dao.remove(it.id) }
                     }
-                    lastReadAt = System.currentTimeMillis()
+                    lastReadAt = android.os.SystemClock.elapsedRealtime()
                     if (_state.value.owner == owner) {
                         rebuild(owner)
                         if (!_state.value.draft.touched) {
@@ -762,7 +829,7 @@ class FinanceRepository(
                         }
                     }
                 }
-                if (recoveryStore.reserve(key))
+                if (includeRecovery && recoveryStore.reserve(key))
                     runCatching {
                             val temporary =
                                 java.io.File.createTempFile(

@@ -15,8 +15,10 @@ for (const editing of [false, true]) {
     else await page.getByRole('button', { name: '＋ Add / resume transaction' }).click();
     await page.locator('form.transaction-editor').getByLabel('Type', { exact: true }).selectOption('reallocate');
     await page.locator('form.transaction-editor').getByLabel('Description', { exact: true }).fill('move leftover rent allocation');
-    await page.locator('form.transaction-editor').getByLabel('Move from', { exact: true }).selectOption('Housing');
-    await page.locator('form.transaction-editor').getByLabel('Move to', { exact: true }).selectOption('Travel fund');
+    await page.locator('form.transaction-editor').getByLabel('Move from', { exact: true }).click();
+    await page.getByRole('option', { name: 'Housing', exact: true }).filter({ visible: true }).last().click();
+    await page.locator('form.transaction-editor').getByLabel('Move to', { exact: true }).click();
+    await page.getByRole('option', { name: 'Travel fund', exact: true }).filter({ visible: true }).last().click();
     await page.locator('form.transaction-editor').getByLabel('Amount', { exact: true }).fill('1400');
     await page.getByRole('button', { name: editing ? 'Save changes' : 'Add transaction', exact: true }).click();
     await expect(page.getByText('Transaction saved.', { exact: true })).toBeVisible();
@@ -80,7 +82,8 @@ test('save another immediately persists its selected accounts and uses the depos
   await page.getByRole('button', { name: '＋ Add / resume transaction' }).click();
   const form = page.locator('.transaction-editor');
   await form.getByLabel('Type', { exact: true }).selectOption('transfer');
-  await form.getByLabel('To account', { exact: true }).selectOption('USD travel wallet');
+  await form.getByLabel('To account', { exact: true }).click();
+  await page.getByRole('option', { name: 'USD travel wallet · USD', exact: true }).filter({ visible: true }).last().click();
   await form.getByLabel('Type', { exact: true }).selectOption('income');
   await expect(form.getByLabel('Currency', { exact: true })).toHaveValue('USD');
   await form.getByLabel('Description', { exact: true }).fill('Extra income received');
@@ -92,6 +95,28 @@ test('save another immediately persists its selected accounts and uses the depos
   await page.reload();
   await page.getByRole('button', { name: '＋ Add / resume transaction' }).click();
   await expect(form.getByLabel('Type', { exact: true })).toHaveValue('income');
-  await expect(form.getByLabel('Deposit account', { exact: true })).toHaveValue('USD travel wallet');
+  await expect(form.getByLabel('Deposit account', { exact: true }).locator('xpath=ancestor::label')).toContainText('USD travel wallet');
   await expect(form.getByLabel('Currency', { exact: true })).toHaveValue('USD');
+});
+
+test('editing expands under its row and description suggestions preserve amount and date', async ({ page }) => {
+  await page.goto('/transactions');
+  const row = page.getByRole('row').filter({ hasText: 'Weekly groceries · neighbourhood market' }).first();
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  const expanded = page.locator('.ant-table-expanded-row');
+  await expect(expanded.getByRole('button', { name: 'Save changes' })).toBeVisible();
+  expect(await expanded.evaluate(el => el.previousElementSibling?.textContent)).toContain('Weekly groceries');
+  await expanded.getByRole('button', { name: 'Close draft' }).click();
+  await page.getByRole('button', { name: '＋ Add / resume transaction' }).click();
+  const form = page.locator('form.transaction-editor');
+  const date = await form.locator('input[type=date]').inputValue();
+  await form.getByLabel('Amount', { exact: true }).fill('19.75');
+  await form.getByLabel('Description', { exact: true }).fill('Weekly groc');
+  await page.getByRole('option').filter({ visible: true }).filter({ hasText: 'Weekly groceries · neighbourhood market' }).click();
+  await expect(form.getByLabel('Description', { exact: true })).toHaveValue('Weekly groceries · neighbourhood market');
+  await expect(form.getByLabel('Amount', { exact: true })).toHaveValue('19.75');
+  await expect(form.locator('input[type=date]')).toHaveValue(date);
+  await form.getByLabel('Budget category', { exact: true }).click();
+  await form.getByLabel('Budget category', { exact: true }).fill('Travel');
+  await expect(page.getByRole('option', { name: 'Travel fund', exact: true })).toBeVisible();
 });
