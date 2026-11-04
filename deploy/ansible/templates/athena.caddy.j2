@@ -1,4 +1,7 @@
 {{ presto_domain }} {
+{% if presto_caddy_waf_file is defined %}
+    import edge_waf
+{% endif %}
     encode zstd gzip
     log {
         output stdout

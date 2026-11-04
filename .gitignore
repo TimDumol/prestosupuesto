@@ -89,3 +89,6 @@ yarn-error.*
 /docs/public-repository-review.md
 /deploy/ansible/inventory/hosts.yml
 /native-android/app/google-services.json
+
+# Host-specific isolation inventory and migration runbooks
+/deploy/private/

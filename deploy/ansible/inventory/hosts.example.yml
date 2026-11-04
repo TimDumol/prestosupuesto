@@ -6,3 +6,9 @@ all:
           ansible_host: finance.example.com
           ansible_user: deploy
           ansible_ssh_private_key_file: ~/.ssh/presto-deploy
+          presto_isolation_network: finance-edge
+          presto_isolation_address: 192.0.2.3
+          presto_issuer_host: auth.example.com
+          presto_issuer_proxy_address: 192.0.2.2
+          # Optional path inside Caddy, already imported by its main Caddyfile.
+          # presto_caddy_waf_file: /etc/caddy/sites-enabled/00-waf.caddy

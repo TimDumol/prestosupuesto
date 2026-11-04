@@ -11,7 +11,7 @@ services:
       COOKIE_SECURE: "true"
     read_only: true
     tmpfs:
-      - /tmp:size=16m,mode=1777
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
     volumes:
       - {{ presto_deploy_dir }}/data:/app/data
 {% if presto_fcm_service_account_file is defined %}
@@ -25,14 +25,25 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    cpus: 0.75
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
+    extra_hosts:
+      {{ presto_issuer_host | to_json }}: {{ presto_issuer_proxy_address | to_json }}
     networks:
-      default: {}
-      caddy-edge:
+      isolated:
+        ipv4_address: {{ presto_isolation_address | to_json }}
         aliases:
           - presto-finance
 
 networks:
-  default: {}
-  caddy-edge:
+  isolated:
     external: true
-    name: caddy-edge
+    name: {{ presto_isolation_network | to_json }}

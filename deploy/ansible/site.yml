@@ -69,7 +69,20 @@
           - "{{ presto_caddy_container }}"
       changed_when: false
 
-    - name: Inspect the shared Caddy edge network
+    - name: Require an isolated finance network and issuer route
+      ansible.builtin.assert:
+        that:
+          - presto_isolation_network is defined
+          - presto_isolation_network | length > 0
+          - presto_isolation_address is defined
+          - presto_isolation_address | length > 0
+          - presto_issuer_host is defined
+          - presto_issuer_host | length > 0
+          - presto_issuer_proxy_address is defined
+          - presto_issuer_proxy_address | length > 0
+        fail_msg: Configure the isolated network, finance IP, and issuer route in the private inventory.
+
+    - name: Verify the isolated Docker bridge exists
       ansible.builtin.command:
         argv:
           - docker
@@ -77,32 +90,42 @@
           - inspect
           - --format
           - "{{ '{{' }}.Driver{{ '}}' }}"
-          - caddy-edge
+          - "{{ presto_isolation_network }}"
       check_mode: false
       changed_when: false
-      failed_when: false
-      register: caddy_edge_inspect
+      register: presto_isolation_bridge
+      failed_when: presto_isolation_bridge.rc != 0 or presto_isolation_bridge.stdout | trim != 'bridge'
 
-    - name: Reject a non-bridge shared Caddy edge network
-      ansible.builtin.assert:
-        that:
-          - caddy_edge_inspect.rc != 0 or caddy_edge_inspect.stdout | trim == 'bridge'
-        fail_msg: caddy-edge exists but is not a Docker bridge network.
-
-    - name: Create the shared Caddy edge network when absent
+    - name: Verify Caddy is attached to the isolated bridge
       ansible.builtin.command:
         argv:
           - docker
-          - network
-          - create
-          - --driver
-          - bridge
-          - caddy-edge
-      when:
-        - caddy_edge_inspect.rc != 0
-        - not ansible_check_mode
+          - inspect
+          - --format
+          - "{{ '{{' }}json .NetworkSettings.Networks{{ '}}' }}"
+          - "{{ presto_caddy_container }}"
       check_mode: false
-      changed_when: true
+      changed_when: false
+      register: presto_caddy_networks
+      failed_when: >
+        presto_caddy_networks.rc != 0 or
+        presto_isolation_network not in (presto_caddy_networks.stdout | from_json) or
+        (presto_caddy_networks.stdout | from_json)[presto_isolation_network].IPAddress != presto_issuer_proxy_address
+
+    - name: Verify the shared WAF snippet can be loaded
+      ansible.builtin.command:
+        argv: [docker, exec, -i, "{{ presto_caddy_container }}", caddy, adapt, --config, /dev/stdin, --adapter, caddyfile]
+        stdin: |
+          import {{ presto_caddy_waf_file }}
+          :8080 {
+            route {
+              import edge_waf
+              respond 200
+            }
+          }
+      check_mode: false
+      changed_when: false
+      when: presto_caddy_waf_file is defined
 
     - name: Create deployment and persistent data directories
       ansible.builtin.file:
@@ -176,6 +199,12 @@
         owner: root
         group: root
         mode: '0644'
+
+    - name: Validate the finance Compose configuration
+      ansible.builtin.command:
+        argv: [docker, compose, -p, presto-finance, -f, compose.production.yaml, config, --quiet]
+        chdir: "{{ presto_deploy_dir }}/app"
+      changed_when: false
 
     - name: Start the finance service
       ansible.builtin.command:
